@@ -16,11 +16,16 @@ def _common() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--data-dir", default="data", help="where downloads/features are cached")
     p.add_argument("--output-dir", default="outputs", help="where results are written")
-    p.add_argument("--max-cases", type=int, default=20, help="total usable cases wanted")
-    p.add_argument("--department", default=None, help='filter, e.g. "Gynecology"')
-    p.add_argument("--label-mode", choices=["ebl", "any_rbc"], default="ebl")
-    p.add_argument("--ebl-threshold", type=float, default=500.0, help="mL, for --label-mode ebl")
-    p.add_argument("--require-aline", action="store_true", help="only cases with an arterial line")
+    p.add_argument("--max-cases", type=int, default=20,
+                   help="total usable cases wanted, split evenly between higher- and lower-blood-loss groups")
+    p.add_argument("--department", default=None,
+                   help='keep only cases whose Department contains this text, e.g. "Gynecology" (run "explore" to see the list)')
+    p.add_argument("--label-mode", choices=["ebl", "any_rbc"], default="ebl",
+                   help="ebl = estimated blood loss >= --ebl-threshold; any_rbc = any red-cell transfusion")
+    p.add_argument("--ebl-threshold", type=float, default=500.0,
+                   help="blood-loss cut-off in mL that defines the higher-loss group (only for --label-mode ebl)")
+    p.add_argument("--require-aline", action="store_true",
+                   help="only cases with an arterial line (beat-to-beat blood pressure, better shock-index data)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--force", action="store_true", help="re-download / recompute cached items")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -38,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = sub.add_parser("demo", parents=[common], help="offline end-to-end run on SYNTHETIC data")
     d.add_argument("--n-cases", type=int, default=24)
+    sub.add_parser("explore", parents=[common],
+                   help="show how many cases each option would give (departments, thresholds); no signals downloaded")
     sub.add_parser("select", parents=[common], help="download clinical table, pick candidate cases")
     sub.add_parser("download", parents=[common], help="download signals, compute window features")
     sub.add_parser("summarize", parents=[common], help="build the case-level feature table")
@@ -69,6 +76,9 @@ def main(argv=None) -> int:
 
     if args.cmd == "demo":
         out = pipeline.run_demo(cfg, n_cases=args.n_cases)
+    elif args.cmd == "explore":
+        pipeline.step_explore(cfg)
+        return 0
     elif args.cmd == "select":
         pipeline.step_select(cfg, force=args.force)
         return 0

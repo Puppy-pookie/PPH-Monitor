@@ -1,7 +1,7 @@
 # PPH Pipeline - early haemorrhage signal discovery (VitalDB stage)
 
 <!-- VERSION:START -->
-**Pipeline version:** 0.1.0  
+**Pipeline version:** 0.2.0  
 **Production date:** 2026-11-26
 <!-- VERSION:END -->
 
@@ -61,7 +61,36 @@ Start small: each case downloads one `.vital` file from the public VitalDB datas
 | `--require-aline` | only cases with an arterial line (beat-to-beat BP) |
 | `--force` | re-download / recompute cached cases |
 
-Individual steps: `select`, `download`, `summarize`, `evaluate`. The same commands exist as `pph-pipeline <command>`.
+Individual steps: `select`, `download`, `summarize`, `evaluate`.
+
+### Choosing options (plain English)
+
+Run `explore` first. It needs only the clinical table (no signals are downloaded) and prints how many cases each choice would give you:
+
+```powershell
+python -m pph_pipeline explore
+python -m pph_pipeline explore --department Gynecology --ebl-threshold 300
+```
+
+| You want | Use | What to know |
+|---|---|---|
+| A bigger sample | `--max-cases 40` | Split evenly between higher- and lower-loss groups. Start with 10, then 40 or more. |
+| One specialty only | `--department Gynecology` | Matches any part of the department name; `explore` lists the names. |
+| A different blood-loss cut-off | `--ebl-threshold 300` | Lower cut-off gives more higher-loss cases but a weaker contrast between groups. |
+| Transfusion instead of blood loss | `--label-mode any_rbc` | Labels a case higher-loss if any red cells were given. |
+| Cleaner blood-pressure data | `--require-aline` | Keeps only cases with an arterial line. Fewer cases, better shock index. |
+| A different random sample | `--seed 7` | Same seed gives the same cases each time. |
+| Redo downloads | `--force` | Ignores the cache. |
+
+Starting points:
+
+```powershell
+python -m pph_pipeline run --max-cases 10                                   # quick check that everything works
+python -m pph_pipeline run --max-cases 40 --require-aline                   # first real analysis
+python -m pph_pipeline run --max-cases 30 --department Gynecology --ebl-threshold 300   # closest to obstetrics available here
+```
+
+Gynaecological surgery is still not childbirth. Treat results as a test of the method, not evidence about PPH. The same commands exist as `pph-pipeline <command>`.
 
 ## Outputs
 

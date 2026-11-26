@@ -190,6 +190,61 @@ def step_evaluate(cfg: Config, table: pd.DataFrame, windows_by_case: dict,
     return run_dir
 
 
+# --------------------------------------------------------------- explore
+def explore_report(cases: pd.DataFrame, cfg: Config) -> str:
+    """Plain-text summary of what is in the clinical table, so options can be chosen with numbers."""
+    df = cases.copy()
+    df.columns = [c.lower() for c in df.columns]
+    n = len(df)
+    ebl = pd.to_numeric(df["intraop_ebl"], errors="coerce") if "intraop_ebl" in df else pd.Series(dtype=float)
+    rbc = pd.to_numeric(df["intraop_rbc"], errors="coerce") if "intraop_rbc" in df else pd.Series(dtype=float)
+    has_aline = df["aline1"].notna() if "aline1" in df else pd.Series(False, index=df.index)
+
+    out = []
+    out.append(f"Clinical table: {n} cases")
+    out.append("")
+    out.append("1) Label definitions (what counts as a 'higher blood loss' case)")
+    out.append(f"   Estimated blood loss recorded: {int(ebl.notna().sum())} cases")
+    for thr in (300, 500, 1000):
+        k = int((ebl >= thr).sum())
+        mark = "  <- current --ebl-threshold" if abs(thr - cfg.ebl_threshold_ml) < 1e-9 else ""
+        out.append(f"   EBL >= {thr:>4} mL: {k:>5} cases{mark}")
+    out.append(f"   Any red-cell transfusion (--label-mode any_rbc): {int((rbc > 0).sum())} of {int(rbc.notna().sum())} recorded")
+    out.append(f"   Arterial line present (--require-aline): {int(has_aline.sum())} cases")
+    out.append("")
+    out.append("2) Departments (use any part of a name with --department, not case sensitive)")
+    if "department" in df:
+        dep = df["department"].astype(str)
+        tab = pd.DataFrame({
+            "cases": dep.value_counts(),
+            f"EBL>={int(cfg.ebl_threshold_ml)}": (ebl >= cfg.ebl_threshold_ml).groupby(dep).sum(),
+            "any_RBC": (rbc > 0).groupby(dep).sum(),
+            "aline": has_aline.groupby(dep).sum(),
+        }).fillna(0).astype(int).sort_values("cases", ascending=False)
+        out.append(tab.to_string())
+    else:
+        out.append("   (no department column found)")
+    out.append("")
+    out.append("3) What your current settings would give")
+    cands = candidate_cases(df, cfg)
+    out.append(f"   label_mode={cfg.label_mode}, department={cfg.department!r}, require_aline={cfg.require_aline}")
+    out.append(f"   usable candidates: label=1 -> {int((cands.label == 1).sum())}, label=0 -> {int((cands.label == 0).sum())}")
+    quota = class_quota(cfg)
+    out.append(f"   --max-cases {cfg.max_cases} asks for {quota[1]} higher-loss and {quota[0]} lower-loss cases")
+    out.append("")
+    out.append("Rule of thumb: aim for at least 20 cases per group before reading anything into the AUC numbers.")
+    out.append("Example: python -m pph_pipeline run --max-cases 40 --department Gynecology --ebl-threshold 300")
+    return "\n".join(out)
+
+
+def step_explore(cfg: Config) -> str:
+    cfg.ensure_dirs()
+    cases = load_clinical_table(cfg)
+    report = explore_report(cases, cfg)
+    print(report)
+    return report
+
+
 # ------------------------------------------------------------------ demo
 def run_demo(cfg: Config, n_cases: int = 24) -> Path:
     """End-to-end run on synthetic data. No network needed."""
