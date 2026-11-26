@@ -1,0 +1,2 @@
+# Avoid Windows/Linux line-ending churn in commits
+* text=auto

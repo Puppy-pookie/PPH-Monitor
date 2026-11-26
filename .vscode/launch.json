@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Demo (synthetic, offline)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pph_pipeline",
+      "args": ["demo"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Run on VitalDB (10 cases)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pph_pipeline",
+      "args": ["run", "--max-cases", "10"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
