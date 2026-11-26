@@ -5,6 +5,10 @@ Managed by `scripts/bump_version.py` - add entries with that script, not by hand
 
 <!-- CHANGELOG:INSERT -->
 
+## [0.2.2] - 2026-11-26
+
+- Add MIT license, license metadata, and a GitHub Actions workflow that runs the tests on Windows and Linux
+
 ## [0.2.1] - 2026-11-26
 
 - Add recipes command and copy-and-paste example commands (CLI and README); document what the data can and cannot answer

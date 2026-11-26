@@ -1,7 +1,7 @@
 # PPH Pipeline - early haemorrhage signal discovery (VitalDB stage)
 
 <!-- VERSION:START -->
-**Pipeline version:** 0.2.1  
+**Pipeline version:** 0.2.2  
 **Production date:** 2026-11-26
 <!-- VERSION:END -->
 
@@ -163,6 +163,14 @@ git commit -m "Release vX.Y.Z"
 - v0.2: use laboratory haemoglobin draws to localise bleeding in time and test true lead time versus blood-pressure change.
 - v0.3: threshold/alarm analysis (false-alarm rate per hour), motion-robust features.
 - Later: validate on real postpartum data with measured blood loss (needs ethics approval and a clinical partner).
+
+## License
+
+Code is released under the MIT License (see `LICENSE`). The VitalDB data are separate and carry their own terms (CC BY 4.0). The software is provided as-is for research use and is not a medical device.
+
+## Continuous testing
+
+`.github/workflows/tests.yml` runs the offline test suite on Windows and Linux every time you push to GitHub. Check the *Actions* tab of your repository for a green tick.
 
 ## Data credit
 
