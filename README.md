@@ -1,7 +1,7 @@
 # PPH Pipeline - early haemorrhage signal discovery (VitalDB stage)
 
 <!-- VERSION:START -->
-**Pipeline version:** 0.2.0  
+**Pipeline version:** 0.2.1  
 **Production date:** 2026-11-26
 <!-- VERSION:END -->
 
@@ -82,15 +82,46 @@ python -m pph_pipeline explore --department Gynecology --ebl-threshold 300
 | A different random sample | `--seed 7` | Same seed gives the same cases each time. |
 | Redo downloads | `--force` | Ignores the cache. |
 
-Starting points:
+### How the pieces fit together
 
-```powershell
-python -m pph_pipeline run --max-cases 10                                   # quick check that everything works
-python -m pph_pipeline run --max-cases 40 --require-aline                   # first real analysis
-python -m pph_pipeline run --max-cases 30 --department Gynecology --ebl-threshold 300   # closest to obstetrics available here
-```
+Every command has the same shape: `python -m pph_pipeline <command> [options]`.
 
-Gynaecological surgery is still not childbirth. Treat results as a test of the method, not evidence about PPH. The same commands exist as `pph-pipeline <command>`.
+- **Command** says what to do: `explore` (look), `run` (do everything), the four steps `select`, `download`, `summarize`, `evaluate`, plus `demo` and `recipes`.
+- **Options** say which cases to use: `--department`, `--label-mode`, `--ebl-threshold`, `--require-aline`, `--max-cases`, `--seed`. They go **after** the command. If you run the steps one by one, repeat the same options each time.
+- **Data** is fetched for you, so there is nothing to download by hand. The first `explore` or `run` saves the small clinical table to `data\raw\cases.csv`. `run` and `download` then fetch each case's signals (internet needed) and cache the computed features in `data\features\`.
+- **Results** appear in `outputs\<timestamp>_vitaldb\`: open `results.json`, the two PNG figures, and `case_features.csv` (opens in Excel).
+
+Print the recipes below any time with `python -m pph_pipeline recipes`.
+
+### What this data can and cannot answer
+
+- No dataset in this pipeline is labelled "PPH". VitalDB is surgical data, so the closest you can get is gynaecological surgery with higher blood loss or transfusion.
+- All recordings are retrospective. Nothing here is live.
+- There is no direct blood-flow measurement. The pipeline uses proxies: PPG pulse amplitude and perfusion index (peripheral perfusion) and arterial pressure (best with `--require-aline`). VitalDB may hold cardiac-output tracks for some cases, which this version does not use.
+
+### Copy-and-paste recipes
+
+<!-- RECIPES:START -->
+| Goal | Command | What it does |
+|---|---|---|
+| Look before you download | `python -m pph_pipeline explore` | Prints case counts per department, blood-loss cut-off, transfusion and arterial line. Downloads only the small clinical table. |
+| Look at gynaecology with a lower blood-loss cut-off | `python -m pph_pipeline explore --department Gyn --ebl-threshold 300` | Same report, but for departments containing 'Gyn' and a 300 mL cut-off. |
+| Smoke test on real data (10 cases) | `python -m pph_pipeline run --max-cases 10` | Whole pipeline on 5 higher-loss and 5 lower-loss cases. Use this to check that everything works. |
+| First real analysis, best blood-pressure data | `python -m pph_pipeline run --max-cases 40 --require-aline` | Only cases with an arterial line (beat-to-beat pressure), so the shock index is more reliable. |
+| Gynaecology only (closest to obstetrics here) | `python -m pph_pipeline run --department Gyn --max-cases 30 --ebl-threshold 300` | Gynaecological surgery, higher-loss group = 300 mL or more. Still not childbirth. |
+| Heavy-bleeding focus (1000 mL or more) | `python -m pph_pipeline run --max-cases 30 --ebl-threshold 1000` | Run explore with the same threshold first: few cases bleed this much, so you may not get 15. |
+| Transfusion as the label instead of blood loss | `python -m pph_pipeline run --label-mode any_rbc --max-cases 40` | Higher-loss group = any red-cell transfusion during surgery. |
+| Gynaecology + transfusion + arterial line | `python -m pph_pipeline run --department Gyn --label-mode any_rbc --require-aline --max-cases 30` | Several filters together. Check with explore that enough cases remain. |
+| A different random sample of the same size | `python -m pph_pipeline run --max-cases 40 --seed 7` | Same options, different cases. A result that survives a new seed is more believable. |
+| Step 1 of 4 (step by step): choose cases | `python -m pph_pipeline select --department Gyn --max-cases 30` | Writes the candidate list. Repeat the SAME options on every step. |
+| Step 2 of 4: download signals | `python -m pph_pipeline download --department Gyn --max-cases 30` | Downloads each case and computes 30-second window features. Cached, so reruns are fast. |
+| Step 3 of 4: build the case table | `python -m pph_pipeline summarize --department Gyn --max-cases 30` | One baseline-normalised row per case. |
+| Step 4 of 4: models and figures | `python -m pph_pipeline evaluate --department Gyn --max-cases 30` | Writes results.json, tables and figures into a new outputs folder. |
+| Redo downloads from scratch | `python -m pph_pipeline run --max-cases 10 --force` | Ignores the cache. Slower; only needed if a download looks corrupted. |
+| Offline practice run (synthetic data) | `python -m pph_pipeline demo` | No internet needed. Results are labelled SYNTHETIC. |
+<!-- RECIPES:END -->
+
+Department names with spaces need quotes, for example `--department "General surgery"`. `Gyn` matches any department containing those letters, and `explore` shows the exact names. Gynaecological surgery is still not childbirth. Treat results as a test of the method, not evidence about PPH. The same commands exist as `pph-pipeline <command>`.
 
 ## Outputs
 

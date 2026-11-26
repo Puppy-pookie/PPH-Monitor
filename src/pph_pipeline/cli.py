@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from . import pipeline
+from .recipes import format_recipes
 from .config import Config
 from .version import __production_date__, __version__
 
@@ -43,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = sub.add_parser("demo", parents=[common], help="offline end-to-end run on SYNTHETIC data")
     d.add_argument("--n-cases", type=int, default=24)
+    sub.add_parser("recipes", help="print copy-and-paste example commands for common goals")
     sub.add_parser("explore", parents=[common],
                    help="show how many cases each option would give (departments, thresholds); no signals downloaded")
     sub.add_parser("select", parents=[common], help="download clinical table, pick candidate cases")
@@ -68,6 +70,9 @@ def config_from_args(args) -> Config:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd == "recipes":
+        print(format_recipes())
+        return 0
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
