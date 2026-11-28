@@ -23,5 +23,5 @@ def test_readme_contains_every_recipe():
 def test_recipes_command_prints(capsys):
     assert main(["recipes"]) == 0
     out = capsys.readouterr().out
-    assert f"{PREFIX} explore --department Gyn" in out
+    assert f"{PREFIX} explore --operation Cesarean" in out
     assert "Options go AFTER the command" in out

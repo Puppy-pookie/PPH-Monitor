@@ -14,6 +14,7 @@ from .config import Config
 from .signal_features import build_case_windows
 
 SBP_TRACK = "Solar8000/ART_SBP"
+CUFF_TRACK = "Solar8000/NIBP_SBP"
 
 
 def _pulse_shape(phase: np.ndarray) -> np.ndarray:
@@ -59,17 +60,25 @@ def make_synthetic_case(is_bleeder: bool, cfg: Config, rng: np.random.Generator,
     return ppg, hr_num, sbp_num
 
 
+def make_cuff_track(sbp_num: np.ndarray, rng: np.random.Generator, every_s: int = 180) -> np.ndarray:
+    """Intermittent cuff readings: one value every few minutes, NaN in between."""
+    cuff = np.full_like(sbp_num, np.nan, dtype=float)
+    cuff[::every_s] = sbp_num[::every_s] + rng.normal(0, 3.0, cuff[::every_s].size)
+    return cuff
+
+
 def make_synthetic_cohort(cfg: Config, n_cases: int = 24, seed: int | None = None):
-    """Returns (cases_df, windows_by_case)."""
+    """Returns (cases_df, case_windows_by_id) where each value is a CaseWindows object."""
     rng = np.random.default_rng(cfg.seed if seed is None else seed)
     rows, windows = [], {}
     for i in range(n_cases):
         is_bleeder = i % 2 == 0
         ppg, hr, sbp = make_synthetic_case(is_bleeder, cfg, rng)
-        w, _ = build_case_windows(ppg, cfg.target_fs, hr, {SBP_TRACK: sbp},
-                                  cfg.numeric_interval_s, cfg)
+        cuff = make_cuff_track(sbp, rng)
+        built = build_case_windows(ppg, cfg.target_fs, hr, {SBP_TRACK: sbp, CUFF_TRACK: cuff},
+                                   cfg.numeric_interval_s, cfg)
         cid = i + 1
-        windows[cid] = w
+        windows[cid] = built
         rows.append({
             "caseid": cid,
             "label": int(is_bleeder),

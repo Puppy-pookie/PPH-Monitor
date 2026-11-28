@@ -44,8 +44,12 @@ def _origin(w: pd.DataFrame, op_start, cfg: Config) -> float:
 
 
 def plot_trajectories(cases: pd.DataFrame, windows_by_case: dict, cfg: Config, out_path: Path,
-                      note: str = "", bin_min: float = 5.0) -> None:
-    """Median (and IQR) trajectory of normalised PPG amplitude and shock index, by group."""
+                      note: str = "", bin_min: float = 5.0, min_n: int = 3) -> None:
+    """Median (and IQR) trajectory of normalised PPG amplitude and shock index, by group.
+
+    The thin panels underneath show how many cases contribute to each time bin, so the
+    noisy tail of a long surgery cannot look more representative than it is.
+    """
     recs = []
     for _, row in cases.iterrows():
         cid = int(row["caseid"])
@@ -55,13 +59,15 @@ def plot_trajectories(cases: pd.DataFrame, windows_by_case: dict, cfg: Config, o
         t0 = _origin(w, row.get("opstart", np.nan), cfg)
         base = w[(w.t_start >= t0 - cfg.baseline_s) & (w.t_start < t0)]
         base_ac = base["ppg_ac"].median()
-        base_si = base["shock_index"].median()
+        base_si = base["shock_index"].median() if "shock_index" in base else np.nan
         if not np.isfinite(base_ac) or base_ac <= 0:
             continue
         body = w[w.t_start >= t0].copy()
+        if cfg.analysis_minutes:
+            body = body[body.t_start < t0 + cfg.analysis_minutes * 60.0]
         body["bin"] = np.floor((body["t_start"] - t0) / 60.0 / bin_min) * bin_min
         body["ac_rel"] = body["ppg_ac"] / base_ac * 100.0
-        body["si_delta"] = body["shock_index"] - base_si
+        body["si_delta"] = body["shock_index"] - base_si if "shock_index" in body else np.nan
         g = body.groupby("bin")[["ac_rel", "si_delta"]].median().reset_index()
         g["label"] = int(row["label"])
         g["caseid"] = cid
@@ -70,24 +76,32 @@ def plot_trajectories(cases: pd.DataFrame, windows_by_case: dict, cfg: Config, o
         return
     allr = pd.concat(recs)
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 3.8))
-    for ax, col, ylab in ((axes[0], "ac_rel", "PPG amplitude (% of baseline)"),
-                          (axes[1], "si_delta", "Shock index change vs baseline")):
+    fig = plt.figure(figsize=(10, 5.2))
+    gs = fig.add_gridspec(2, 2, height_ratios=[4, 1], hspace=0.12)
+    for j, (col, ylab) in enumerate((("ac_rel", "PPG amplitude (% of baseline)"),
+                                     ("si_delta", "Shock index change vs baseline"))):
+        ax, axn = fig.add_subplot(gs[0, j]), fig.add_subplot(gs[1, j])
         for label in (0, 1):
             sub = allr[allr["label"] == label]
-            agg = sub.groupby("bin")[col].agg(["median", lambda s: s.quantile(0.25),
-                                                lambda s: s.quantile(0.75), "count"])
+            agg = sub.groupby("bin")[col].agg(["median", lambda s_: s_.quantile(0.25),
+                                                lambda s_: s_.quantile(0.75), "count"])
             agg.columns = ["med", "q25", "q75", "n"]
-            agg = agg[agg["n"] >= 3]
-            if agg.empty:
+            axn.step(agg.index, agg["n"], where="post", color=COLORS[label])
+            shown = agg[agg["n"] >= min_n]
+            if shown.empty:
                 continue
-            ax.plot(agg.index, agg["med"], color=COLORS[label], label=LABEL_NAMES[label])
-            ax.fill_between(agg.index, agg["q25"], agg["q75"], color=COLORS[label], alpha=0.15)
-        ax.set_xlabel("minutes since surgery start")
+            ax.plot(shown.index, shown["med"], color=COLORS[label], label=LABEL_NAMES[label])
+            ax.fill_between(shown.index, shown["q25"], shown["q75"], color=COLORS[label], alpha=0.15)
         ax.set_ylabel(ylab)
         ax.grid(alpha=0.3)
-    axes[0].legend(fontsize=8)
-    fig.suptitle(f"Median trajectories (IQR band) {note}".strip(), fontsize=10)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=130)
+        ax.tick_params(labelbottom=False)
+        axn.axhline(min_n, color="grey", lw=0.8, ls=":")
+        axn.set_ylabel("cases (n)")
+        axn.set_xlabel("minutes since surgery start")
+        axn.grid(alpha=0.3)
+        axn.set_ylim(bottom=0)
+    fig.axes[0].legend(fontsize=8)
+    fig.suptitle(f"Median trajectories (IQR band; bins with fewer than {min_n} cases not drawn) {note}".strip(),
+                 fontsize=10)
+    fig.savefig(out_path, dpi=130, bbox_inches="tight")
     plt.close(fig)

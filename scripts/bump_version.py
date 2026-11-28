@@ -2,6 +2,7 @@
 
 Examples (run from the project root):
     python scripts/bump_version.py patch --note "Fix PPG window rejection"
+    python scripts/bump_version.py minor --note "First change" --note "Second change"
     python scripts/bump_version.py minor --note "Add Hb lab timing"
     python scripts/bump_version.py --set 0.3.0 --note "First obstetric dataset"
 Optional: --date 2026-12-01 (defaults to today's date on your computer)
@@ -39,7 +40,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("part", nargs="?", choices=["major", "minor", "patch"])
     p.add_argument("--set", dest="explicit", help="set an explicit version, e.g. 0.3.0")
-    p.add_argument("--note", required=True, help="one-line description for the changelog")
+    p.add_argument("--note", required=True, action="append",
+                   help="changelog line; repeat the option for several lines")
     p.add_argument("--date", default=date.today().isoformat(), help="production date (YYYY-MM-DD)")
     args = p.parse_args()
 
@@ -69,7 +71,8 @@ def main() -> int:
     README.write_text(readme, encoding="utf-8")
 
     # 3) CHANGELOG entry (newest first)
-    entry = f"<!-- CHANGELOG:INSERT -->\n\n## [{new}] - {args.date}\n\n- {args.note}\n"
+    bullets = "\n".join(f"- {n}" for n in args.note)
+    entry = f"<!-- CHANGELOG:INSERT -->\n\n## [{new}] - {args.date}\n\n{bullets}\n"
     log = CHANGELOG.read_text(encoding="utf-8")
     log = log.replace("<!-- CHANGELOG:INSERT -->\n", entry, 1)
     CHANGELOG.write_text(log, encoding="utf-8")
@@ -77,7 +80,7 @@ def main() -> int:
     print(f"Version {old} -> {new} (production date {args.date})")
     print("Next:")
     print("  git add -A")
-    print(f'  git commit -m "Release v{new}: {args.note}"')
+    print(f'  git commit -m "Release v{new}: {args.note[0]}"')
     print(f'  git tag -a v{new} -m "v{new}"')
     return 0
 

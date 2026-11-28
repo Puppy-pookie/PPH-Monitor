@@ -8,7 +8,7 @@ import pandas as pd
 from .config import Config
 
 COVARIATE_COLUMNS = [
-    "age", "sex", "asa", "emop", "department", "optype", "opname",
+    "subjectid", "age", "sex", "asa", "emop", "department", "optype", "opname",
     "intraop_ebl", "intraop_rbc", "intraop_phe", "intraop_eph", "intraop_epi",
     "opstart", "opend",
 ]
@@ -40,6 +40,10 @@ def candidate_cases(cases: pd.DataFrame, cfg: Config) -> pd.DataFrame:
         if "department" not in df.columns:
             raise KeyError("Clinical table has no 'department' column")
         df = df[df["department"].astype(str).str.contains(cfg.department, case=False, na=False)]
+    if cfg.operation:
+        if "opname" not in df.columns:
+            raise KeyError("Clinical table has no 'opname' column")
+        df = df[df["opname"].astype(str).str.contains(cfg.operation, case=False, na=False, regex=False)]
     if cfg.require_aline and "aline1" in df.columns:
         df = df[df["aline1"].notna()]
 

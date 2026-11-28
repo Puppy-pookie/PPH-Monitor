@@ -13,6 +13,8 @@ def _cases(n=120):
         "intraop_ebl": rng.choice([50, 200, 400, 700, 1200], n),
         "intraop_rbc": rng.choice([0, 0, 2], n),
         "aline1": rng.choice(["x", None], n),
+        "opname": rng.choice(["Cesarean section", "Total hysterectomy", "Myomectomy"], n),
+        "subjectid": rng.integers(1, 90, n),
         "opstart": 600.0, "opend": 3000.0,
     })
 
@@ -24,5 +26,8 @@ def test_explore_report_lists_departments_and_counts():
     for name in ("Gynecology", "General surgery", "Urology"):
         assert name in text
     assert "EBL >=  500 mL" in text and "current --ebl-threshold" in text
+    for op in ("Cesarean section", "Total hysterectomy", "Myomectomy"):
+        assert op in text
+    assert "Patients with more than one surgery" in text
     assert "usable candidates: label=1" in text
     assert "asks for 5 higher-loss and 5 lower-loss" in text

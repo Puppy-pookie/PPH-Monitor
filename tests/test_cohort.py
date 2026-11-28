@@ -40,3 +40,12 @@ def test_unknown_label_mode_raises():
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+def test_operation_filter_matches_text_in_operation_name():
+    cases = _cases()
+    cases["opname"] = np.where(cases["caseid"] % 4 == 0, "Cesarean section", "Hysterectomy")
+    cfg = Config(operation="cesar")
+    cands = candidate_cases(cases, cfg)
+    assert len(cands) > 0 and set(cands["caseid"] % 4) == {0}
+    assert len(candidate_cases(cases, Config())) > len(cands)

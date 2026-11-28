@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from . import pipeline
+from .guide import command_one_liners, format_guide
 from .recipes import format_recipes
 from .config import Config
 from .version import __production_date__, __version__
@@ -25,6 +26,20 @@ def _common() -> argparse.ArgumentParser:
                    help="ebl = estimated blood loss >= --ebl-threshold; any_rbc = any red-cell transfusion")
     p.add_argument("--ebl-threshold", type=float, default=500.0,
                    help="blood-loss cut-off in mL that defines the higher-loss group (only for --label-mode ebl)")
+    p.add_argument("--operation", default=None,
+                   help='keep only cases whose operation name contains this text, e.g. "Cesarean" (run "explore" to see names)')
+    p.add_argument("--bp-source", choices=["arterial", "cuff", "either"], default="arterial",
+                   help="blood pressure used for shock index: arterial line (invasive), cuff (non-invasive, "
+                        "carried forward), or either (arterial if well covered, else cuff). "
+                        "The source used is recorded for every case")
+    p.add_argument("--cuff-carry-minutes", type=float, default=10.0,
+                   help="how long a cuff reading may be carried forward (minutes)")
+    p.add_argument("--analysis-minutes", type=float, default=None,
+                   help="analyse only the first N minutes after surgery start (default: whole surgery)")
+    p.add_argument("--strict-qc", action="store_true",
+                   help="also reject PPG windows flagged for motion or baseline drift (default: flag only)")
+    p.add_argument("--fast", action="store_true",
+                   help="fewer repeats, permutations and resamples so a run finishes quickly (for testing)")
     p.add_argument("--require-aline", action="store_true",
                    help="only cases with an arterial line (beat-to-beat blood pressure, better shock-index data)")
     p.add_argument("--seed", type=int, default=42)
@@ -37,13 +52,20 @@ def build_parser() -> argparse.ArgumentParser:
     common = _common()
     parser = argparse.ArgumentParser(
         prog="pph-pipeline",
-        description="PPH early-detection research pipeline (VitalDB stage).")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="PPH early-detection research pipeline (VitalDB stage).\n"
+                    "End goal: a non-invasive device that monitors postpartum haemorrhage. Results are\n"
+                    "labelled by whether a non-invasive device could measure the signal.",
+        epilog="Commands:\n" + command_one_liners() + "\n\n"
+               "Pattern: python -m pph_pipeline <command> [options]   (options go AFTER the command)\n"
+               "More:    python -m pph_pipeline guide    |    python -m pph_pipeline recipes")
     parser.add_argument("--version", action="version",
                         version=f"pph-pipeline {__version__} (produced {__production_date__})")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     d = sub.add_parser("demo", parents=[common], help="offline end-to-end run on SYNTHETIC data")
     d.add_argument("--n-cases", type=int, default=24)
+    sub.add_parser("guide", help="print a plain-English reference: what every command reads, writes and needs")
     sub.add_parser("recipes", help="print copy-and-paste example commands for common goals")
     sub.add_parser("explore", parents=[common],
                    help="show how many cases each option would give (departments, thresholds); no signals downloaded")
@@ -65,6 +87,12 @@ def config_from_args(args) -> Config:
         ebl_threshold_ml=args.ebl_threshold,
         require_aline=args.require_aline,
         seed=args.seed,
+        operation=args.operation,
+        bp_source=args.bp_source,
+        cuff_carry_s=args.cuff_carry_minutes * 60.0,
+        analysis_minutes=args.analysis_minutes,
+        strict_qc=args.strict_qc,
+        **({"cv_repeats": 5, "n_permutations": 50, "n_bootstrap": 300} if args.fast else {}),
     )
 
 
@@ -72,6 +100,9 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     if args.cmd == "recipes":
         print(format_recipes())
+        return 0
+    if args.cmd == "guide":
+        print(format_guide())
         return 0
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -94,8 +125,8 @@ def main(argv=None) -> int:
         pipeline.step_summarize(cfg)
         return 0
     elif args.cmd == "evaluate":
-        table, windows = pipeline.step_summarize(cfg)
-        out = pipeline.step_evaluate(cfg, table, windows, mode="vitaldb")
+        table, windows, excl = pipeline.step_summarize(cfg)
+        out = pipeline.step_evaluate(cfg, table, windows, mode="vitaldb", exclusions=excl)
     elif args.cmd == "run":
         out = pipeline.run_all(cfg, force=args.force)
     else:  # pragma: no cover

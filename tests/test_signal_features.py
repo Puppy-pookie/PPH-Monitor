@@ -1,7 +1,10 @@
 import numpy as np
 
 from pph_pipeline.config import Config
-from pph_pipeline.signal_features import extract_ppg_windows, ppg_window_features
+from pph_pipeline.signal_features import (
+    assess_ppg_window, clip_fraction, extract_ppg_windows, extract_ppg_windows_qc,
+    ppg_window_features, rmssd_adjacent,
+)
 from pph_pipeline.synthetic import synth_ppg
 
 CFG = Config()
@@ -26,15 +29,63 @@ def test_amplitude_scales_with_signal():
     assert 0.4 < b / a < 0.6
 
 
-def test_rejects_flat_and_nan_windows():
-    assert ppg_window_features(np.full(3000, 5.0), FS, CFG) is None
+def test_rejects_flat_and_nan_windows_with_reasons():
+    assert assess_ppg_window(np.full(3000, 5.0), FS, CFG) == (None, "flat")
     x = _window()
     x[:1500] = np.nan  # 50% missing
-    assert ppg_window_features(x, FS, CFG) is None
+    assert assess_ppg_window(x, FS, CFG) == (None, "missing")
 
 
-def test_extract_windows_counts():
-    x = np.concatenate([_window(seed=i) for i in range(4)])  # 120 s
-    df = extract_ppg_windows(x, FS, CFG)
-    assert len(df) == 4
-    assert list(df["t_start"]) == [0.0, 30.0, 60.0, 90.0]
+def test_clipped_window_is_rejected_with_reason():
+    x = _window()
+    x[x > np.percentile(x, 80)] = np.percentile(x, 80)  # flat-topped, as a saturated sensor would give
+    assert clip_fraction(x, CFG.clip_run) > CFG.max_clip_frac
+    assert assess_ppg_window(x, FS, CFG) == (None, "clipped")
+
+
+def test_noisy_window_is_rejected_not_averaged_in():
+    rng = np.random.default_rng(2)
+    x = _window() + rng.normal(0, 0.5, int(30 * FS))
+    feats, reason = assess_ppg_window(x, FS, CFG)
+    assert feats is None and reason in {"low_sqi", "irregular", "few_beats"}
+
+
+def test_clean_window_has_quality_metrics_and_no_flags():
+    feats, reason = assess_ppg_window(_window(), FS, CFG)
+    assert reason is None
+    assert feats["ppg_beat_conf"] > 0.95
+    assert feats["qc_flags"] == ""
+    assert feats["ppg_clip_frac"] == 0.0
+
+
+def test_drift_is_flagged_and_strict_qc_rejects_it():
+    t = np.arange(int(30 * FS)) / FS
+    x = _window() + 2.0 * np.sin(2 * np.pi * 0.2 * t)  # slow swing about twice the pulse amplitude
+    feats, reason = assess_ppg_window(x, FS, CFG)
+    assert reason is None and "drift" in feats["qc_flags"]
+    assert assess_ppg_window(x, FS, Config(strict_qc=True)) == (None, "drift")
+
+
+def test_motion_flag_uses_beat_confidence_threshold():
+    cfg = Config(min_beat_conf=0.9999)  # threshold above even a clean window's score
+    feats, reason = assess_ppg_window(_window(), FS, cfg)
+    assert reason is None and "motion" in feats["qc_flags"]
+    assert assess_ppg_window(_window(), FS, Config(min_beat_conf=0.9999, strict_qc=True)) == (None, "motion")
+
+
+def test_rmssd_uses_adjacent_beats_only():
+    ibi = np.array([0.8, 0.9, 2.5, 0.7, 0.7, 0.7, 0.7])
+    ok = np.array([True, True, False, True, True, True, True])
+    # adjacent valid pairs: (0.8,0.9)=0.1 and three zero differences -> sqrt(0.01/4) = 50 ms.
+    # The old method differenced across the removed beat (0.9 -> 0.7) and gave about 100 ms.
+    assert abs(rmssd_adjacent(ibi, ok) - 50.0) < 1e-6
+
+
+def test_extract_windows_counts_and_rejection_log():
+    good = [_window(seed=i) for i in range(3)]
+    bad = np.full(int(30 * FS), 5.0)  # flat window
+    x = np.concatenate(good + [bad])
+    accepted, rejects, n = extract_ppg_windows_qc(x, FS, CFG)
+    assert n == 4 and len(accepted) == 3
+    assert list(rejects["reason"]) == ["flat"] and list(rejects["t_start"]) == [90.0]
+    assert list(extract_ppg_windows(x, FS, CFG)["t_start"]) == [0.0, 30.0, 60.0]
